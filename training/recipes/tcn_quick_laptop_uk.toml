@@ -1,0 +1,91 @@
+# Same as tcn_quick_laptop but for UK English: UK MFA phoneme set and viseme map.
+# Requires: MFA models for UK (see QUICKSTART.md). Run with:
+#   MFA_MODEL=english_uk_mfa uv run python training/train.py --config training/recipes/tcn_quick_laptop_uk.toml
+
+[model]
+name = "tcn"
+num_visemes = 15
+layers = 5
+channels = 128
+kernel_size = 3
+dropout = 0.1
+normalization = "weight_norm"
+
+[audio]
+sample_rate = 16000
+hop_length_ms = 10
+window_length_ms = 25
+n_mels = 80
+fmin = 50
+fmax = 8000
+n_fft = 1024
+normalization = "per_utterance"
+
+[training]
+batch_size = 16
+max_chunk_length_s = 8.0
+min_chunk_length_s = 2.0
+mixed_precision = false
+loss_type = "cross_entropy"
+multi_label = true
+target_crossfade_ms = 60
+viseme_overlap_enabled = true
+viseme_overlap_threshold = 1.0
+class_weighting = true
+focal_loss_alpha = 1.0
+focal_loss_gamma = 2.0
+optimizer = "adamw"
+learning_rate = 3e-4
+betas = [0.9, 0.98]
+weight_decay = 1e-2
+scheduler = "onecycle"
+warmup_ratio = 0.05
+max_epochs = 15
+early_stopping_patience = 5
+early_stopping_metric = "val_f1"
+specaugment_enabled = true
+specaugment_time_mask_max_ms = 20
+mask_padded_frames = true
+
+[data]
+dataset = "librispeech"
+splits = ["dev-clean"]
+val_split = "dev-clean"
+test_split = "dev-clean"
+augmentation_enabled = false
+noise_snr_range = [10, 30]
+gain_range = [0.8, 1.2]
+phoneme_viseme_map = "training/configs/viseme_map_en_uk_mfa.json"
+
+[evaluation]
+metrics = ["frame_accuracy", "macro_f1", "confusion_matrix"]
+compute_latency = true
+target_hardware = "cpu"
+
+[hardware]
+device = "cpu"
+num_workers = 4
+pin_memory = false
+
+[logging]
+log_interval = 20
+save_interval = 500
+max_checkpoints = 2
+log_level = "INFO"
+
+[tensorboard]
+enabled = true
+runs_dir = "training/runs"
+run_name_format = "{experiment_name}_{timestamp}"
+log_scalars = true
+log_histograms = false
+log_images = false
+log_audio = false
+scalar_log_interval = 20
+histogram_log_interval = 100
+image_log_interval = 500
+
+[experiment]
+name = "quick_laptop_uk_15ep"
+tags = ["tcn", "quick", "dev-clean", "uk-english", "15epochs"]
+notes = "UK English (MFA UK phone set), dev-clean, 15 epochs"

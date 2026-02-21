@@ -4,6 +4,7 @@
 
 An open-source, cross-platform project that converts audio input into realistic facial expressions in real-time following the [MPEG-4 (FBA)](https://visagetechnologies.com/uploads/2012/08/MPEG-4FBAOverview.pdf) standard.
 
+**→ To try it on your laptop (small data, few epochs), see [QUICKSTART.md](QUICKSTART.md).**
 
 ## Setup for model training
 

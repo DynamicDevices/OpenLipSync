@@ -1,0 +1,124 @@
+{
+  "description": "English (UK) MFA phoneme to viseme mapping for OpenLipSync TCN. Same 15-viseme set as US.",
+  "version": "1.0",
+
+  "viseme_set": {
+    "description": "Standard 15-viseme set - DO NOT CHANGE ORDER",
+    "visemes": {
+      "silence": 0,
+      "PP": 1,
+      "FF": 2,
+      "TH": 3,
+      "DD": 4,
+      "kk": 5,
+      "CH": 6,
+      "SS": 7,
+      "nn": 8,
+      "RR": 9,
+      "aa": 10,
+      "E": 11,
+      "ih": 12,
+      "oh": 13,
+      "ou": 14
+    }
+  },
+
+  "phoneme_to_viseme": {
+    "sil": "silence",
+    "sp": "silence",
+    "spn": "silence",
+    "nsn": "silence",
+    "pau": "silence",
+    "h": "silence",
+    "ʔ": "silence",
+    "ç": "silence",
+
+    "p": "PP",
+    "b": "PP",
+    "m": "PP",
+    "pʰ": "PP",
+    "pʲ": "PP",
+    "pʷ": "PP",
+    "bʲ": "PP",
+    "mʲ": "PP",
+    "m̩": "PP",
+
+    "f": "FF",
+    "v": "FF",
+    "fʲ": "FF",
+    "vʲ": "FF",
+    "vʷ": "FF",
+
+    "θ": "TH",
+    "ð": "TH",
+    "t̪": "TH",
+    "d̪": "TH",
+
+    "t": "DD",
+    "d": "DD",
+    "tʰ": "DD",
+    "tʲ": "DD",
+    "tʷ": "DD",
+    "dʲ": "DD",
+
+    "k": "kk",
+    "ɡ": "kk",
+    "ŋ": "kk",
+    "kʰ": "kk",
+    "kʷ": "kk",
+    "ɡʷ": "kk",
+    "c": "kk",
+    "cʰ": "kk",
+    "cʷ": "kk",
+    "ɟ": "kk",
+    "ɟʷ": "kk",
+
+    "tʃ": "CH",
+    "dʒ": "CH",
+    "ʃ": "CH",
+    "ʒ": "CH",
+
+    "s": "SS",
+    "z": "SS",
+
+    "n": "nn",
+    "l": "nn",
+    "n̩": "nn",
+    "ɫ": "nn",
+    "ɫ̩": "nn",
+    "ɲ": "nn",
+    "ʎ": "nn",
+
+    "ɹ": "RR",
+
+    "a": "aa",
+    "ɑ": "aa",
+    "ɑː": "aa",
+    "ɒ": "aa",
+    "ɒː": "aa",
+    "ɐ": "aa",
+    "ə": "aa",
+    "əw": "aa",
+    "ɔj": "aa",
+
+    "e": "E",
+    "ej": "E",
+    "ɛ": "E",
+    "ɛː": "E",
+    "ɜ": "E",
+    "ɜː": "E",
+
+    "ɪ": "ih",
+    "i": "ih",
+    "iː": "ih",
+    "j": "ih",
+
+    "ʊ": "oh",
+
+    "ʉ": "ou",
+    "ʉː": "ou",
+    "w": "ou",
+    "aj": "ou",
+    "aw": "ou"
+  }
+}

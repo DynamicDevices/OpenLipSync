@@ -4,7 +4,25 @@ namespace OpenLipSync.Inference.Test;
 
 public static class SampleLocator
 {
-    public sealed record SamplePaths(string WavPath, string LabPath, string JsonPath);
+    public sealed record SamplePaths(string WavPath, string? LabPath, string? JsonPath);
+
+    /// <summary>Find a sample from WAV path (optional .lab/.json same base name) or from dev-clean.</summary>
+    public static SamplePaths? FindSample(string? wavPathOrNull = null)
+    {
+        if (!string.IsNullOrWhiteSpace(wavPathOrNull))
+        {
+            var wav = Path.GetFullPath(wavPathOrNull);
+            if (File.Exists(wav))
+            {
+                var dir = Path.GetDirectoryName(wav) ?? "";
+                var baseName = Path.GetFileNameWithoutExtension(wav);
+                var lab = Path.Combine(dir, baseName + ".lab");
+                var json = Path.Combine(dir, baseName + ".json");
+                return new SamplePaths(wav, File.Exists(lab) ? lab : null, File.Exists(json) ? json : null);
+            }
+        }
+        return FindAnySample();
+    }
 
     public static SamplePaths? FindAnySample()
     {

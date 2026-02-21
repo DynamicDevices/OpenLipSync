@@ -3,8 +3,10 @@
 # OpenLipSync MFA Alignment Script for Prepared Datasets
 # This script runs MFA alignment on prepared datasets with flat structure
 # 
-# Usage: ./run_mfa_alignment_prepared.sh DATASET_NAME
+# Usage: ./run_mfa_alignment_prepared.sh DATASET_NAME [MFA_MODEL]
 # Example: ./run_mfa_alignment_prepared.sh test-clean
+# Example (UK English): ./run_mfa_alignment_prepared.sh dev-clean english_uk_mfa
+# MFA_MODEL defaults to english_us_arpa (US English). Use english_uk_mfa for UK English.
 
 set -e  # Exit on any error
 
@@ -38,13 +40,27 @@ command_exists() {
 }
 
 # Check arguments
-if [ $# -ne 1 ]; then
-    print_error "Usage: $0 DATASET_NAME"
+# Usage: DATASET [MODEL]  or  DATASET ACOUSTIC DICTIONARY (for UK: english_mfa english_uk_mfa)
+if [ $# -lt 1 ] || [ $# -gt 3 ]; then
+    print_error "Usage: $0 DATASET_NAME [MFA_MODEL]"
+    print_error "   or: $0 DATASET_NAME ACOUSTIC_MODEL DICTIONARY_MODEL"
     print_error "Example: $0 test-clean"
+    print_error "Example (UK): $0 dev-clean english_mfa english_uk_mfa"
     exit 1
 fi
 
 DATASET_NAME="$1"
+if [ $# -eq 3 ]; then
+    MFA_ACOUSTIC="$2"
+    MFA_DICTIONARY="$3"
+elif [ $# -eq 2 ]; then
+    MFA_ACOUSTIC="$2"
+    MFA_DICTIONARY="$2"
+else
+    MFA_ACOUSTIC="${MFA_ACOUSTIC_MODEL:-${MFA_MODEL:-english_us_arpa}}"
+    MFA_DICTIONARY="${MFA_DICTIONARY_MODEL:-${MFA_MODEL:-english_us_arpa}}"
+fi
+print_status "MFA acoustic: ${MFA_ACOUSTIC}, dictionary: ${MFA_DICTIONARY}"
 
 # Check if micromamba is available
 if ! command_exists micromamba; then
@@ -158,27 +174,27 @@ print_status "MFA environment activated successfully"
 # Step 1: Find OOVs from the corpus
 print_status "Step 1: Finding OOVs from corpus..."
 mfa find_oovs "${TEMP_CORPUS}" \
-              english_us_arpa \
+              "${MFA_DICTIONARY}" \
               "${OOVS_DIR}" || {
     print_warning "OOV finding failed, but continuing with alignment"
 }
 
 # Step 2: Generate pronunciations for OOVs using G2P
-OOVS_FILE="${OOVS_DIR}/oovs_found_english_us_arpa.txt"
+OOVS_FILE="${OOVS_DIR}/oovs_found_${MFA_DICTIONARY}.txt"
 OOVS_DICT="${OOVS_DIR}/oovs.dict"
 
 if [ -f "${OOVS_FILE}" ] && [ -s "${OOVS_FILE}" ]; then
     print_status "Step 2: Generating pronunciations for OOVs..."
     mfa g2p "${OOVS_FILE}" \
-            english_us_arpa \
+            "${MFA_DICTIONARY}" \
             "${OOVS_DICT}" || {
         print_warning "G2P failed, but continuing with alignment"
     }
     
-    # Step 3: Add pronunciations to the ARPA dictionary model
+    # Step 3: Add pronunciations to the dictionary model
     if [ -f "${OOVS_DICT}" ] && [ -s "${OOVS_DICT}" ]; then
-        print_status "Step 3: Adding pronunciations to ARPA dictionary..."
-        mfa model add_words english_us_arpa "${OOVS_DICT}" || {
+        print_status "Step 3: Adding pronunciations to dictionary..."
+        mfa model add_words "${MFA_DICTIONARY}" "${OOVS_DICT}" || {
             print_warning "Adding words to dictionary failed, but continuing with alignment"
         }
     fi
@@ -191,8 +207,8 @@ print_status "Step 4: Performing forced alignment..."
 print_status "This may take a while depending on your corpus size..."
 
 mfa align "${TEMP_CORPUS}" \
-          english_us_arpa \
-          english_us_arpa \
+          "${MFA_DICTIONARY}" \
+          "${MFA_ACOUSTIC}" \
           "${TEMP_OUT_ALIGN}" \
           --clean \
           --output_format json
@@ -211,7 +227,7 @@ if [ $? -eq 0 ]; then
         
         if [ -f "${PREPARED_DIR}/${base_name}.wav" ]; then
             cp "$json_file" "$dest_file"
-            ((ALIGNED_COUNT++))
+            ALIGNED_COUNT=$((ALIGNED_COUNT + 1))
         else
             print_warning "No corresponding WAV file for alignment: ${base_name}"
         fi

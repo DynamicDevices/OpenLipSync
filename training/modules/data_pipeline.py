@@ -355,10 +355,14 @@ class LibriSpeechDataset(Dataset):
         if not self.dataset_dir.exists():
             raise RuntimeError(f"Prepared dataset directory not found: {self.dataset_dir}")
         
-        # Get list of audio files (other files will be found by extension)
-        self.audio_files = sorted(list(self.dataset_dir.glob("*.wav")))
+        # Get list of audio files that have alignment (skip WAVs without JSON)
+        all_wavs = list(self.dataset_dir.glob("*.wav"))
+        self.audio_files = sorted([f for f in all_wavs if (f.with_suffix(".json")).exists()])
+        skipped = len(all_wavs) - len(self.audio_files)
+        if skipped > 0:
+            print(f"Skipping {skipped} utterance(s) without alignment JSON in {self.dataset_dir}")
         if not self.audio_files:
-            raise RuntimeError(f"No audio files found in {self.dataset_dir}")
+            raise RuntimeError(f"No audio files with alignment found in {self.dataset_dir}")
         
         # Cache for processed samples
         self.sample_cache = {}

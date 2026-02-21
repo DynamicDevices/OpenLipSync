@@ -31,10 +31,74 @@ public sealed class OpenLipSyncBackend : IOvrLipSyncBackend
     private bool _isMultiLabel;
     private int _numVisemes = Frame.VisemeCount;
 
+    // Per-utterance mel normalization (matches training). When set, mel features are normalized before inference.
+    private float? _normMean;
+    private float? _normStd;
+    private float[]? _normBuffer; // reusable buffer for normalized mel
+
     public bool IsInitialized => _initialized;
     public int SampleRate => _inputSampleRate;
     public string? DefaultModelPath { get => _defaultModelPath; set => _defaultModelPath = value; }
     public string? LastError => _lastError;
+
+    /// <summary>
+    /// Set per-utterance normalization (mean, std) for mel features. Must match training: (mel - mean) / std.
+    /// Call after <see cref="ComputeNormalizationStats"/> when config uses "per_utterance" normalization.
+    /// </summary>
+    public void SetPerUtteranceNormalization(float mean, float std)
+    {
+        _normMean = mean;
+        _normStd = std;
+    }
+
+    /// <summary>
+    /// Compute scalar mean and std over all mel frames for the given audio (same pipeline as inference).
+    /// Use with <see cref="SetPerUtteranceNormalization"/> so inference receives normalized mel like training.
+    /// </summary>
+    public (float mean, float std) ComputeNormalizationStats(float[] audio, int inputSampleRate)
+    {
+        if (_audioConfig == null)
+            throw new InvalidOperationException("Backend not initialized or config not loaded.");
+        var config = _audioConfig;
+
+        float[] at16k = inputSampleRate == config.SampleRate
+            ? audio
+            : ResampleToConfigRate(audio, inputSampleRate, config.SampleRate);
+
+        var melFrames = new List<float[]>();
+        using (var ringBuffer = new AudioRingBuffer(config.SampleRate * 3))
+        using (var melProcessor = new MelSpectrogramProcessor(config))
+        {
+            ringBuffer.Write(at16k);
+            while (melProcessor.TryProcessNextHop(ringBuffer, out var melFeatures) && melFeatures.Length > 0)
+                melFrames.Add((float[])melFeatures.Clone());
+        }
+
+        if (melFrames.Count == 0)
+            return (0f, 1f);
+
+        long n = 0;
+        double sum = 0;
+        foreach (var frame in melFrames)
+            foreach (var v in frame)
+            { sum += v; n++; }
+        float mean = (float)(sum / n);
+
+        double sumSq = 0;
+        foreach (var frame in melFrames)
+            foreach (var v in frame)
+            { float d = v - mean; sumSq += d * d; }
+        float std = (float)Math.Sqrt(sumSq / n);
+        if (std < 1e-8f) std = 1e-8f;
+
+        return (mean, std);
+    }
+
+    private static float[] ResampleToConfigRate(float[] audio, int fromRate, int toRate)
+    {
+        using var resampler = new AudioResampler(fromRate, toRate);
+        return resampler.Resample(audio);
+    }
 
     /// <summary>
     /// Initialize the backend with the specified audio parameters.
@@ -401,8 +465,23 @@ public sealed class OpenLipSyncBackend : IOvrLipSyncBackend
 
         try
         {
+            float[] inputMel = melFeatures;
+            if (_normMean.HasValue && _normStd.HasValue && _normStd.Value >= 1e-8f)
+            {
+                int n = Math.Min(melFeatures.Length, _audioConfig!.NMels);
+                if (_normBuffer == null || _normBuffer.Length < n)
+                    _normBuffer = new float[n];
+                float mean = _normMean.Value;
+                float std = _normStd.Value;
+                for (int i = 0; i < n; i++)
+                    _normBuffer[i] = (melFeatures[i] - mean) / std;
+                if (n < _normBuffer.Length)
+                    Array.Clear(_normBuffer, n, _normBuffer.Length - n);
+                inputMel = _normBuffer;
+            }
+
             // Prepare input tensor: [batch=1, time=1, features=n_mels]
-            var inputTensor = new DenseTensor<float>(melFeatures, new[] { 1, 1, melFeatures.Length });
+            var inputTensor = new DenseTensor<float>(inputMel, new[] { 1, 1, inputMel.Length });
 
             // Run inference
             using var results = _onnxSession.Run(new[] { NamedOnnxValue.CreateFromTensor("audio_features", inputTensor) });
