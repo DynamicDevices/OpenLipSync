@@ -104,6 +104,16 @@ If CUDA/MPS isn’t available, the trainer falls back to CPU and logs a warning.
 
 ## 7. Run C# inference with training audio
 
+**Just checking visemes (e.g. with your own WAVs)?** You do **not** need dev-clean, Python, MFA, or any training setup. You only need:
+
+1. **Clone the repo** (and `git checkout develop` if that’s the branch with the export).
+2. **.NET 8 SDK** – install from [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download) or `sudo apt install dotnet-sdk-8` / `brew install dotnet@8`. Check with `dotnet --version`.
+3. Run the command from the **project root** with a path to your WAV (see “Checking visemes” below). The repo already includes an ONNX model under `export/`, so no LFS or training is required.
+
+Dev-clean / training data is only needed if you want to run training yourself or use a dev-clean WAV as a sanity check (see “Example WAV” later in this section).
+
+---
+
 After exporting a model to ONNX (e.g. from the training UI or export script), you can run the C# test app from the **project root** so it finds the `export/` directory and optional training WAVs.
 
 - **Auto-pick a sample** from `training/data/prepared/dev-clean`:
@@ -119,7 +129,9 @@ The app loads the newest ONNX model under `export/` (and its `config.json`), app
 
 ### Checking visemes (quick run)
 
-From the **project root** (so `export/` and the ONNX model are found), run with your own WAV:
+**1. Run with your test WAV files**
+
+From the **project root** (so `export/` and the ONNX model are found):
 
 ```bash
 dotnet run --project inference/OpenLipSync.Inference/OpenLipSync.Inference.Test/OpenLipSync.Inference.Test.csproj -c Release -- /path/to/your-audio.wav
@@ -131,14 +143,37 @@ Example with a file in Downloads:
 dotnet run --project inference/OpenLipSync.Inference/OpenLipSync.Inference.Test/OpenLipSync.Inference.Test.csproj -c Release -- ~/Downloads/julian-01.wav
 ```
 
-**What you get**
+Outputs are written **next to the WAV** (same folder): `visemes_<basename>.csv` and `visemes_<basename>.html`.
 
-- **Console:** Per-utterance normalization stats, then viseme lines at five time points (start, 25%, 50%, 75%, end). Each line lists which visemes are active (e.g. `sil=0.14 aa=0.43 E=0.26`).
-- **Same folder as the WAV:**
-  - `visemes_<basename>.csv` – every frame: `time_ms`, then 15 columns (sil, PP, FF, …). Open in Excel or use for your own plots.
-  - `visemes_<basename>.html` – open in a browser: time (s) vs activation (0–1) for all 15 visemes. Use **All on** / **All off** or click the legend to show/hide series.
+**2. Evaluating the CSV output**
 
-If the app says "Model not found", ensure there is an ONNX export under `export/` (e.g. `export/quick_laptop_uk_15ep_*/model.onnx` and `config.json`). The app uses the **newest** `model.onnx` under `export/`.
+- **Location:** Same directory as the WAV, e.g. `visemes_julian-01.csv`.
+- **Format:** Header row: `time_ms,sil,PP,FF,TH,DD,kk,CH,SS,nn,RR,aa,E,ih,oh,ou`. Each following row is one time step (frame); values are 0–1 activations.
+- **What to check:** Open in Excel or a text editor. During speech you should see non-zero values in several viseme columns (e.g. `aa`, `E`, `ou`); near silence, `sil` should be high (e.g. > 0.9) and others low. Time should advance by ~21 ms per row (model frame rate). If every row is `sil=1` and the rest 0, something is wrong (e.g. model not loaded or normalization missing).
+
+**3. Evaluating the HTML output**
+
+- **Location:** Same directory as the WAV, e.g. `visemes_julian-01.html`.
+- **How to use:** Open the file in a browser (double-click or File → Open). You get a line chart: x-axis = time (seconds), y-axis = activation (0–1), one series per viseme.
+- **What to check:** During speech, multiple lines should move (e.g. sil dips, aa/E/ou rise). Use **All on** / **All off** to show or hide all series; click a viseme name in the legend to toggle that line. If the chart is flat (only silence) for a file you know has speech, the pipeline or model is wrong.
+
+**4. Console output**
+
+The app also prints per-utterance normalization (mean, std) and five sample lines at 0%, 25%, 50%, 75%, and 100% of the clip (e.g. `sil=0.14 aa=0.43 E=0.26`). Use these for a quick sanity check without opening CSV/HTML.
+
+**Example WAV with known-ish outputs (sanity check)**
+
+The repo does **not** ship a golden WAV with committed “expected” visemes (training data is gitignored). You can still sanity-check the pipeline:
+
+- **If you have prepared training data:** After running section 4 (training) once, you’ll have `training/data/prepared/dev-clean/` with WAVs and MFA alignment. Run the C# app on one of those WAVs, e.g.:
+  ```bash
+  dotnet run --project inference/OpenLipSync.Inference/OpenLipSync.Inference.Test/OpenLipSync.Inference.Test.csproj -c Release -- training/data/prepared/dev-clean/1272-128104-0000.wav
+  ```
+  The model was trained on this data, so you should see varied visemes during speech (not all silence). The MFA alignment in the matching `.json` is the “ground truth” used for training; you can compare the CSV roughly to that (same time ranges should show the corresponding visemes).
+
+- **Without training data:** Use any of your own WAVs and inspect the CSV/HTML as above; there’s no committed reference output to diff against.
+
+If the app says **"Model not found"**, ensure there is an ONNX export under `export/` (e.g. `export/quick_laptop_uk_15ep_*/model.onnx` and `config.json`). The app uses the **newest** `model.onnx` under `export/`.
 
 ## Troubleshooting
 
