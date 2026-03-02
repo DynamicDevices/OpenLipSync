@@ -25,3 +25,9 @@ gui = [
 export = [
     "onnx",
 ]
+realtime = [
+    "onnxruntime",
+    "sounddevice",
+    "paho-mqtt",
+    "edge-tts",
+]

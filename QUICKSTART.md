@@ -175,6 +175,47 @@ The repo does **not** ship a golden WAV with committed “expected” visemes (t
 
 If the app says **"Model not found"**, ensure there is an ONNX export under `export/` (e.g. `export/quick_laptop_uk_15ep_*/model.onnx` and `config.json`). The app uses the **newest** `model.onnx` under `export/`.
 
+## 8. Real-time mic → visemes → MQTT (test harness)
+
+A Python test harness streams live microphone audio through the ONNX model and publishes viseme activations as JSON to an MQTT broker.
+
+**Install extra deps (from project root):**
+
+```bash
+uv sync --extra realtime
+```
+
+**Run (default: newest model under `export/`, broker `mqtt.dynamicdevices.co.uk:1883`, topic `openlipsync/visemes`):**
+
+```bash
+uv run python tools/realtime_viseme_mqtt.py
+```
+
+**MQTT usage:** Messages are published to `openlipsync/visemes/<client_id>` (client ID is stable per device; override with `--client-id`). Each message is JSON with: `t` (Unix time), `frame`, `client_id`, `visemes` (per-frame activations, normalised to sum=1), and `visemes_peak` (running max over ~1 s, normalised to sum=1). Subscribe to all clients with `mosquitto_sub -h mqtt.dynamicdevices.co.uk -t 'openlipsync/visemes/#'` or to one client with `openlipsync/visemes/<client_id>`.
+
+**Options:**
+
+- `--broker HOST` — MQTT broker host (default: mqtt.dynamicdevices.co.uk)
+- `--port PORT` — MQTT port (default: 1883)
+- `--topic TOPIC` — MQTT topic prefix; the connection’s client ID is appended so each client has a unique topic (default: openlipsync/visemes → openlipsync/visemes/&lt;client_id&gt;)
+- `--client-id ID` — MQTT client ID (default: MAC-derived, e.g. olips-a1b2c3d4e5f6)
+- `--warmup SECS` — Seconds of audio used to compute mel normalization stats (default: 1.0)
+- `--publish-every N` — Publish every N frames (1 = every ~10 ms; 5 = every ~50 ms)
+- `--model-dir PATH` — Use a specific export dir instead of the newest under `export/`
+- `--device NAME` — Sounddevice input device (e.g. list with `python -c "import sounddevice; print(sounddevice.query_devices())"`)
+
+**Phoneme check:** Run with `--phoneme-test`. Each segment is either silence (segment 1) or a test phoneme played from pre-generated files (segment 2–15). The mic captures that audio and the harness reports **peak** viseme activations and ✓/✗ (expected in top 2). Add `--speak` to play the clips: generate once with `uv run --extra realtime python tools/generate_phoneme_prompts.py` (writes `data/phoneme_prompts/`: segment_01.wav = silence, segment_02..15.mp3 = TTS e, ah, eh, oh, oo, p, f, thin, t, k, sh, s, n, r, each repeated 5×). Playback runs in the background; need **ffplay**, **afplay**, or **mpv**.
+
+**JSON payload shape:** Each message is per-frame viseme activations **normalised so each set sums to 1** (including silence). Fields: `t`, `frame`, `client_id`, `visemes` (name → 0–1, sum=1), and `visemes_peak` (running max over last ~1 s, then normalised to sum=1). Example:
+
+```json
+{"t": 1739123456.78, "frame": 42, "client_id": "openlipsync-a1b2c3d4", "visemes": {"silence": 0.9, "PP": 0.01, "aa": 0.02, ...}, "visemes_peak": {"silence": 0.95, "PP": 0.02, "aa": 0.45, ...}}
+```
+
+Normalization uses a short warmup (default 1 s) to estimate mean/std over the mic input; then those stats are fixed for the rest of the session. Stop with Ctrl+C.
+
+**Improving the phoneme test:** The default clips are TTS (Edge TTS). In practice, silence and SS often peak high (playback + mic setup), so the pass rate can be low even when the correct viseme fires. Using **human-recorded** phoneme clips (same filenames in `data/phoneme_prompts/`: segment_01.wav … segment_15.mp3) would improve realism and pass rate. See TODO.md (phoneme test audio).
+
 ## Troubleshooting
 
 | Issue | What to do |

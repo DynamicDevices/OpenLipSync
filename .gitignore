@@ -227,3 +227,6 @@ VisemesAtHome/
 
 OpenLipSync.Inference.Test/
 OpenLipSync.Inference.Standalone/
+
+# Generated phoneme test audio (run tools/generate_phoneme_prompts.py to create)
+data/phoneme_prompts/
