@@ -27,7 +27,10 @@ mfa model download g2p english_us_arpa
 
 Dataset Download is now integrated in the training script.
 
-```python training/train.py --config training/recipes/tcn_config.toml```
+**Quick (laptop) training:**  
+`uv run python training/train.py --config training/recipes/tcn_quick_laptop.toml`
+
+**Full training (production ONNX):** See [QUICKSTART.md](QUICKSTART.md) section 4c. Use `training/recipes/tcn_config.toml` (US) or `training/recipes/tcn_full_uk.toml` (UK), then export with `training/tools/export_onnx.py --run <run_name> --checkpoint best`.
 
 
 This project uses the [LibriSpeech ASR corpus](https://openslr.org/12/) (CC BY 4.0 license).

@@ -40,12 +40,21 @@ command_exists() {
 }
 
 # Check arguments
-# Usage: DATASET [MODEL]  or  DATASET ACOUSTIC DICTIONARY (for UK: english_mfa english_uk_mfa)
+# Usage: DATASET [MODEL]  or  DATASET ACOUSTIC DICTIONARY  or  DATASET [MODEL] --copy-only
+COPY_ONLY=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --copy-only) COPY_ONLY=1; shift ;;
+        *) break ;;
+    esac
+done
+
 if [ $# -lt 1 ] || [ $# -gt 3 ]; then
-    print_error "Usage: $0 DATASET_NAME [MFA_MODEL]"
-    print_error "   or: $0 DATASET_NAME ACOUSTIC_MODEL DICTIONARY_MODEL"
+    print_error "Usage: $0 DATASET_NAME [MFA_MODEL] [--copy-only]"
+    print_error "   or: $0 DATASET_NAME ACOUSTIC_MODEL DICTIONARY_MODEL [--copy-only]"
     print_error "Example: $0 test-clean"
     print_error "Example (UK): $0 dev-clean english_mfa english_uk_mfa"
+    print_error "Example (copy only, skip MFA when alignment cache exists): $0 train-clean-360 --copy-only"
     exit 1
 fi
 
@@ -112,6 +121,33 @@ if [ "${WAV_COUNT}" -ne "${LAB_COUNT}" ]; then
 fi
 
 print_status "Found ${WAV_COUNT} WAV files and ${LAB_COUNT} LAB files"
+
+# --- Copy-only mode: only copy existing alignment from cache to prepared (skip MFA) ---
+if [ "${COPY_ONLY}" -eq 1 ]; then
+    if [ ! -d "${TEMP_OUT_ALIGN}" ]; then
+        print_error "Copy-only mode: alignment output not found at ${TEMP_OUT_ALIGN}"
+        print_error "Run without --copy-only to perform full MFA alignment first."
+        exit 1
+    fi
+    JSON_COUNT=$(find "${TEMP_OUT_ALIGN}" -name "*.json" -not -name "alignment_analysis*" | wc -l)
+    if [ "${JSON_COUNT}" -eq 0 ]; then
+        print_error "Copy-only mode: no JSON alignment files in ${TEMP_OUT_ALIGN}"
+        exit 1
+    fi
+    print_status "Copy-only: copying ${JSON_COUNT} alignment files to prepared dataset..."
+    ALIGNED_COUNT=0
+    while IFS= read -r -d '' json_file; do
+        base_name=$(basename "$json_file" .json)
+        dest_file="${PREPARED_DIR}/${base_name}.json"
+        if [ -f "${PREPARED_DIR}/${base_name}.wav" ]; then
+            cp "$json_file" "$dest_file"
+            ALIGNED_COUNT=$((ALIGNED_COUNT + 1))
+        fi
+    done < <(find "${TEMP_OUT_ALIGN}" -name "*.json" -not -name "alignment_analysis*" -print0)
+    print_success "Copied ${ALIGNED_COUNT} alignment files to ${PREPARED_DIR}"
+    print_success "Done (copy-only). No cleanup - cache left at ${TEMP_OUT_ALIGN}"
+    exit 0
+fi
 
 # Create necessary directories
 mkdir -p "${TEMP_CORPUS}"
@@ -220,8 +256,8 @@ if [ $? -eq 0 ]; then
     print_status "Step 5: Copying alignment results to prepared dataset..."
     
     ALIGNED_COUNT=0
-    # Find all JSON files in speaker subdirectories (skip alignment_analysis.csv)
-    for json_file in $(find "${TEMP_OUT_ALIGN}" -name "*.json" -not -name "alignment_analysis*"); do
+    # Use find -exec to avoid command-line length limits with 100k+ files
+    while IFS= read -r -d '' json_file; do
         base_name=$(basename "$json_file" .json)
         dest_file="${PREPARED_DIR}/${base_name}.json"
         
@@ -231,7 +267,7 @@ if [ $? -eq 0 ]; then
         else
             print_warning "No corresponding WAV file for alignment: ${base_name}"
         fi
-    done
+    done < <(find "${TEMP_OUT_ALIGN}" -name "*.json" -not -name "alignment_analysis*" -print0)
     
     print_success "Copied ${ALIGNED_COUNT} alignment files to prepared dataset"
     

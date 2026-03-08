@@ -83,16 +83,82 @@ To train for **UK English** (British phoneme set and viseme mapping):
 
    The UK recipe uses `training/configs/viseme_map_en_uk_mfa.json`, which maps the UK MFA phone set (IPA-style symbols) to the same 15 visemes. When prompted to download/prepare data, answer **`y`**; alignment will run with the UK model.
 
+## 4c. Full training (production ONNX)
+
+The quick recipes (4 and 4b) use **dev-clean** only and produce a small ONNX suitable for testing. For a **production-quality** model you need to train on the **full** LibriSpeech training sets and then export to ONNX.
+
+**Data:** Full training uses LibriSpeech **train-clean-100** (~6GB), **train-clean-360** (~23GB), and **train-other-500** (~30GB). The first time you run, the script will prompt to download and prepare these; preparation (WAV + MFA alignment) takes a long time per split. **GPU optional:** the recipes default to `device = "cpu"` so training runs without a GPU; for much faster training set `[hardware] device = "cuda"` in the recipe (or `mps` on Apple Silicon).
+
+**US English (full):**
+
+```bash
+uv run python training/train.py --config training/recipes/tcn_config.toml
+```
+
+When prompted to download and prepare missing datasets, answer **`y`**. Each split (train-clean-100, train-clean-360, train-other-500) will be downloaded, converted, and aligned with MFA (US) in turn. Training runs for up to 100 epochs with early stopping.
+
+**UK English (full):**
+
+1. Install UK MFA models (see 4b).
+2. Set MFA env vars and run the full UK recipe:
+
+```bash
+export MFA_ACOUSTIC_MODEL=english_mfa MFA_DICTIONARY_MODEL=english_uk_mfa
+uv run python training/train.py --config training/recipes/tcn_full_uk.toml
+```
+
+Answer **`y`** when asked to download and prepare datasets. Alignment will use the UK dictionary.
+
+**Export to ONNX:** After training, export the best checkpoint so the realtime harness and C# app can use it:
+
+```bash
+uv run python training/tools/export_onnx.py --list
+uv run python training/tools/export_onnx.py --run <run_name> --checkpoint best
+```
+
+`--list` shows available runs under `training/runs/`. Use the run name (e.g. `tcn_full_uk_2026-02-21_12-00-00`) with `--run`. The export writes to `export/<run_name>/` (model.onnx and config.json). The realtime script and C# app pick the newest `export/*/model.onnx` by default.
+
+**Smaller full run:** To try full training with less data, edit the recipe and set e.g. `splits = ["train-clean-100"]` (100h only). Use `training/recipes/tcn_config.toml` (US) or `training/recipes/tcn_full_uk.toml` (UK).
+
 ## 5. Optional: use GPU
 
-Edit `training/recipes/tcn_quick_laptop.toml` and set:
+Edit the recipe (e.g. `training/recipes/tcn_quick_laptop.toml` or `tcn_config.toml`) and set:
 
 ```toml
 [hardware]
-device = "cuda"   # or "mps" on Apple Silicon
+device = "cuda"   # NVIDIA GPU, or AMD GPU with ROCm (same API)
+# device = "mps"  # Apple Silicon
 ```
 
-If CUDA/MPS isn’t available, the trainer falls back to CPU and logs a warning.
+If CUDA/ROCm/MPS isn’t available, the trainer falls back to CPU and logs a warning.
+
+### 5b. AMD GPU (ROCm)
+
+The default `uv sync` installs PyTorch built for **NVIDIA CUDA**. On a machine with an **AMD GPU** (e.g. Radeon RX 7700/7800, Navi 32), you need PyTorch built for **ROCm** so that `torch.cuda.is_available()` is True (ROCm uses the same `torch.cuda` API).
+
+**1. Ensure the GPU is visible**
+
+- Kernel driver: `/dev/kfd` and `/dev/dri/renderD*` should exist (amdgpu driver).
+- Your user must be in the `render` (and usually `video`) group so the process can open those devices:  
+  `groups` should list `render`; if not, add with `sudo usermod -aG render,video $USER` and log in again.
+
+**2. Install PyTorch with ROCm**
+
+From the project root, override the default torch/torchaudio with the ROCm wheels. Use the index that matches your ROCm version (see [PyTorch get-started](https://pytorch.org/get-started/locally/) and choose Linux → Pip → ROCm). Example for ROCm 6.3:
+
+```bash
+uv pip install torch torchaudio --index-url https://download.pytorch.org/whl/rocm6.3
+```
+
+If your distro uses a different ROCm version, use the matching index (e.g. `rocm5.6`, `rocm6.2`). Python 3.13 may not have ROCm wheels on all indices; if so, try the [AMD ROCm docs](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/) or PyTorch “Previous versions” for a compatible wheel.
+
+**3. Use the GPU in training**
+
+In the recipe set `device = "cuda"` (same as for NVIDIA). Then run training as usual; the trainer will use the AMD GPU via ROCm.
+
+**Verify:** `uv run python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"` should print `True` and the GPU name.
+
+**Note:** If you use `uv` and install ROCm via `uv pip install ... --index-url ...rocm6.3`, then `uv run` will re-sync from the lock file and can revert to the default CUDA wheel. To keep using the GPU, run training with the venv Python directly, e.g. `.venv/bin/python training/train.py --config ...`, or a wrapper script that calls `.venv/bin/python`.
 
 ## 6. Where outputs go
 

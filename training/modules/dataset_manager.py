@@ -99,18 +99,21 @@ class DatasetManager:
         return False
     
     def _check_prepared_data(self, dataset: str) -> bool:
-        """Check if prepared data exists (WAV + LAB in flat structure).
-
-        JSON alignment files are optional and may be added later.
-        """
+        """Check if prepared data exists and is ready for training (WAV + LAB + alignment JSONs)."""
         prepared_dataset_dir = self.prepared_dir / dataset
         if not prepared_dataset_dir.exists():
             return False
-            
-        # Require matching WAV and LAB pairs; JSONs are not required
+
         wav_files = set(f.stem for f in prepared_dataset_dir.glob("*.wav"))
         lab_files = set(f.stem for f in prepared_dataset_dir.glob("*.lab"))
-        return len(wav_files) > 0 and wav_files == lab_files
+        if len(wav_files) == 0 or wav_files != lab_files:
+            return False
+
+        # Require at least one alignment JSON so we don't treat "MFA copy failed" as ready
+        json_stems = set(f.stem for f in prepared_dataset_dir.glob("*.json"))
+        if not json_stems or not json_stems.intersection(wav_files):
+            return False
+        return True
     
     def prepare_datasets(self, datasets: List[str], interactive: bool = True) -> bool:
         """
@@ -163,8 +166,12 @@ class DatasetManager:
                     logger.error("Cannot proceed without required datasets")
                     return False
             else:
-                logger.error(f"Missing datasets: {', '.join(missing_datasets)}")
-                return False
+                # Non-interactive (e.g. --yes): auto-confirm download and prepare
+                logger.info(f"Auto-confirming download/prepare for: {', '.join(missing_datasets)}")
+                if not self._download_datasets(missing_datasets):
+                    logger.error("Failed to download datasets")
+                    return False
+                needs_preparation.extend(missing_datasets)
         
         # Handle datasets that need preparation
         if needs_preparation:
@@ -224,9 +231,15 @@ class DatasetManager:
     def _prepare_single_dataset(self, dataset: str) -> bool:
         """Prepare a single dataset through the full pipeline"""
         logger.info(f"Preparing dataset: {dataset}")
-        
-        # Step 1: Create prepared dataset (WAV + LAB) directly
-        if not self._check_prepared_data(dataset):
+        prepared_dataset_dir = self.prepared_dir / dataset
+
+        # Step 1: Create prepared dataset (WAV + LAB) only if missing
+        has_wav_lab = (
+            prepared_dataset_dir.exists()
+            and len(list(prepared_dataset_dir.glob("*.wav"))) > 0
+            and len(list(prepared_dataset_dir.glob("*.lab"))) > 0
+        )
+        if not has_wav_lab and not self._check_prepared_data(dataset):
             logger.info("Creating prepared dataset...")
             if not self._create_corpus(dataset):
                 return False
@@ -279,22 +292,30 @@ class DatasetManager:
             return False
     
     def _run_alignment(self, dataset: str) -> bool:
-        """Run MFA alignment using the prepared dataset MFA script"""
+        """Run MFA alignment using the prepared dataset MFA script.
+        If alignment output already exists in cache, runs with --copy-only to skip MFA.
+        """
         try:
-            # Path to the MFA alignment script
             mfa_script = self.project_root / "run_mfa_alignment_prepared.sh"
-            
             if not mfa_script.exists():
                 logger.error(f"MFA alignment script not found: {mfa_script}")
                 return False
-            
-            logger.info(f"Running MFA alignment for {dataset}...")
-            cmd = [str(mfa_script), dataset]
-            
+
+            cache_align_dir = self.cache_dir / f"out_align_{dataset}"
+            copy_only = cache_align_dir.is_dir() and any(
+                cache_align_dir.rglob("*.json")
+            )
+            if copy_only:
+                logger.info(f"Alignment cache exists for {dataset}, running copy-only...")
+                cmd = [str(mfa_script), dataset, "--copy-only"]
+            else:
+                logger.info(f"Running MFA alignment for {dataset}...")
+                cmd = [str(mfa_script), dataset]
+
             result = subprocess.run(cmd, check=True, capture_output=False)
             logger.info(f"MFA alignment completed for {dataset}")
             return True
-            
+
         except subprocess.CalledProcessError as e:
             logger.error(f"MFA alignment failed for {dataset}: {e}")
             return False

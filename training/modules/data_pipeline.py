@@ -320,7 +320,7 @@ class LibriSpeechDataset(Dataset):
     """
     
     def __init__(self, config: TrainingConfiguration, split: str, 
-                 is_training: bool = True, data_root: Optional[str] = None):
+                 is_training: bool = True, data_root: Optional[str] = None, interactive: bool = True):
         """
         Initialize LibriSpeech dataset
         
@@ -329,6 +329,7 @@ class LibriSpeechDataset(Dataset):
             split: Dataset split (e.g., "train-clean-100", "dev-clean")
             is_training: Whether this is for training (affects augmentation)
             data_root: Root directory for LibriSpeech data
+            interactive: If False, auto-confirm dataset download/prepare (--yes)
         """
         self.config = config
         self.split = split
@@ -347,7 +348,7 @@ class LibriSpeechDataset(Dataset):
             self.dataset_manager = DatasetManager()
         
         # Ensure dataset is prepared
-        if not self.dataset_manager.prepare_datasets([split], interactive=True):
+        if not self.dataset_manager.prepare_datasets([split], interactive=interactive):
             raise RuntimeError(f"Failed to prepare dataset: {split}")
         
         # Load prepared data file list
@@ -688,7 +689,8 @@ def collate_audio_samples(batch: List[AudioSample]) -> Dict[str, torch.Tensor]:
 
 def create_data_loaders(config: TrainingConfiguration, 
                        data_root: Optional[str] = None,
-                       pin_memory: Optional[bool] = None) -> Tuple[DataLoader, DataLoader, DataLoader]:
+                       pin_memory: Optional[bool] = None,
+                       interactive: bool = True) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create training, validation, and test data loaders
     
@@ -696,6 +698,7 @@ def create_data_loaders(config: TrainingConfiguration,
         config: Training configuration
         data_root: Root directory for data (optional)
         pin_memory: Override pin_memory setting (optional)
+        interactive: If False, auto-confirm dataset download/prepare (--yes)
         
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
@@ -710,7 +713,8 @@ def create_data_loaders(config: TrainingConfiguration,
             config=config,
             split=split,
             is_training=True,
-            data_root=data_root
+            data_root=data_root,
+            interactive=interactive
         )
         train_datasets.append(dataset)
     
@@ -722,14 +726,16 @@ def create_data_loaders(config: TrainingConfiguration,
         config=config,
         split=config.data.val_split,
         is_training=False,
-        data_root=data_root
+        data_root=data_root,
+        interactive=interactive
     )
     
     test_dataset = LibriSpeechDataset(
         config=config,
         split=config.data.test_split,
         is_training=False,
-        data_root=data_root
+        data_root=data_root,
+        interactive=interactive
     )
     
     # Create data loaders
