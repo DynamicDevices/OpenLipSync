@@ -82,8 +82,12 @@ class AudioProcessor:
         Returns:
             torch.Tensor: Mel spectrogram features, shape (time_frames, n_mels)
         """
-        # Load audio using the new torchcodec-based approach
-        waveform, original_sample_rate = torchaudio.load_with_torchcodec(audio_path)
+        # Load audio (pass str for C++ bindings; Path can cause issues in some builds)
+        path_str = str(audio_path) if audio_path is not None else ""
+        if not path_str:
+            raise ValueError("audio_path is None or empty")
+        # Use torchaudio.load(); load_with_torchcodec can trigger C++ aborts in DataLoader workers on some setups (e.g. ROCm)
+        waveform, original_sample_rate = torchaudio.load(path_str)
         
         # Ensure mono audio
         if waveform.shape[0] > 1:
@@ -453,7 +457,10 @@ class LibriSpeechDataset(Dataset):
             audio_features = self.audio_processor.waveform_to_mel_features(waveform, sr)
         else:
             # Process audio features (this loads and processes the audio)
-            audio_features = self.audio_processor.load_and_process_audio(audio_file)
+            try:
+                audio_features = self.audio_processor.load_and_process_audio(audio_file)
+            except Exception as e:
+                raise RuntimeError(f"Failed to load audio for {audio_file}: {e}") from e
         
         # Apply normalization according to configuration
         audio_features = self.audio_processor.normalize_features(audio_features)
