@@ -49,7 +49,7 @@ class TCNTrainer:
     clear error handling and progress monitoring.
     """
     
-    def __init__(self, config: TrainingConfiguration, resume_from: Optional[str] = None, data_root: Optional[str] = None, interactive: bool = True):
+    def __init__(self, config: TrainingConfiguration, resume_from: Optional[str] = None, data_root: Optional[str] = None, interactive: bool = True, no_download: bool = False):
         """
         Initialize trainer with configuration
         
@@ -58,6 +58,7 @@ class TCNTrainer:
             resume_from: Path to checkpoint to resume from (optional)
             data_root: Root directory for data (optional)
             interactive: If False, auto-confirm dataset download/prepare (--yes)
+            no_download: If True, use only existing prepared data; fail if any dataset missing (--no-download)
         """
         self.config = config
         
@@ -90,7 +91,7 @@ class TCNTrainer:
         # Create data loaders
         self.logger.info("Setting up data pipeline...")
         self.train_loader, self.val_loader, self.test_loader = create_data_loaders(
-            config, data_root=data_root, pin_memory=self.pin_memory, interactive=interactive)
+            config, data_root=data_root, pin_memory=self.pin_memory, interactive=interactive, no_download=no_download)
         
         # Create model
         self.logger.info("Creating TCN model...")
@@ -625,6 +626,12 @@ Examples:
         help='Non-interactive: auto-confirm download/prepare for all missing datasets (no prompts)'
     )
     
+    parser.add_argument(
+        '--no-download',
+        action='store_true',
+        help='Use only existing prepared data; exit with error if any requested dataset is missing or not prepared (no download or MFA)'
+    )
+    
     return parser.parse_args()
 
 
@@ -648,7 +655,7 @@ def main():
     
     try:
         # Create trainer
-        trainer = TCNTrainer(config, resume_from=args.resume, data_root=args.data_root, interactive=not args.yes)
+        trainer = TCNTrainer(config, resume_from=args.resume, data_root=args.data_root, interactive=not args.yes, no_download=args.no_download)
         
         if args.test_only:
             # Test only mode

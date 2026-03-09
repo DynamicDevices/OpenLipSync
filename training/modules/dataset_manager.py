@@ -115,13 +115,14 @@ class DatasetManager:
             return False
         return True
     
-    def prepare_datasets(self, datasets: List[str], interactive: bool = True) -> bool:
+    def prepare_datasets(self, datasets: List[str], interactive: bool = True, no_download: bool = False) -> bool:
         """
         Ensure all requested datasets are prepared and ready for training
         
         Args:
             datasets: List of dataset names to prepare
             interactive: Whether to prompt user for missing datasets
+            no_download: If True, do not download or prepare; fail if any dataset missing
             
         Returns:
             True if all datasets are ready, False if preparation failed
@@ -152,6 +153,14 @@ class DatasetManager:
             else:
                 logger.info(f"Dataset {dataset} is missing completely")
                 missing_datasets.append(dataset)
+        
+        if no_download:
+            if missing_datasets or needs_preparation:
+                logger.error("--no-download: Refusing to download or prepare. Missing or not ready: %s",
+                             ", ".join(missing_datasets + needs_preparation))
+                return False
+            logger.info("All datasets are ready for training (no-download mode).")
+            return True
         
         # Handle completely missing datasets
         if missing_datasets:
