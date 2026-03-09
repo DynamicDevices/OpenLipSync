@@ -699,7 +699,8 @@ def create_data_loaders(config: TrainingConfiguration,
                        data_root: Optional[str] = None,
                        pin_memory: Optional[bool] = None,
                        interactive: bool = True,
-                       no_download: bool = False) -> Tuple[DataLoader, DataLoader, DataLoader]:
+                       no_download: bool = False,
+                       num_workers_override: Optional[int] = None) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create training, validation, and test data loaders
     
@@ -709,12 +710,14 @@ def create_data_loaders(config: TrainingConfiguration,
         pin_memory: Override pin_memory setting (optional)
         interactive: If False, auto-confirm dataset download/prepare (--yes)
         no_download: If True, use only existing prepared data; fail if any missing (--no-download)
+        num_workers_override: If set, override config.hardware.num_workers (e.g. 0 for ROCm)
         
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
     """
     # Use provided pin_memory override or fall back to config
     use_pin_memory = pin_memory if pin_memory is not None else config.hardware.pin_memory
+    num_workers = num_workers_override if num_workers_override is not None else config.hardware.num_workers
     
     # Create datasets
     train_datasets = []
@@ -756,7 +759,7 @@ def create_data_loaders(config: TrainingConfiguration,
         train_dataset,
         batch_size=config.training.batch_size,
         shuffle=True,
-        num_workers=config.hardware.num_workers,
+        num_workers=num_workers,
         pin_memory=use_pin_memory,
         collate_fn=collate_audio_samples,
         drop_last=True  # Ensure consistent batch sizes
@@ -766,7 +769,7 @@ def create_data_loaders(config: TrainingConfiguration,
         val_dataset,
         batch_size=config.training.batch_size,
         shuffle=False,
-        num_workers=config.hardware.num_workers,
+        num_workers=num_workers,
         pin_memory=use_pin_memory,
         collate_fn=collate_audio_samples,
         drop_last=False
@@ -776,7 +779,7 @@ def create_data_loaders(config: TrainingConfiguration,
         test_dataset,
         batch_size=config.training.batch_size,
         shuffle=False,
-        num_workers=config.hardware.num_workers,
+        num_workers=num_workers,
         pin_memory=use_pin_memory,
         collate_fn=collate_audio_samples,
         drop_last=False

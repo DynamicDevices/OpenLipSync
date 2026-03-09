@@ -49,7 +49,7 @@ class TCNTrainer:
     clear error handling and progress monitoring.
     """
     
-    def __init__(self, config: TrainingConfiguration, resume_from: Optional[str] = None, data_root: Optional[str] = None, interactive: bool = True, no_download: bool = False):
+    def __init__(self, config: TrainingConfiguration, resume_from: Optional[str] = None, data_root: Optional[str] = None, interactive: bool = True, no_download: bool = False, num_workers_override: Optional[int] = None):
         """
         Initialize trainer with configuration
         
@@ -59,6 +59,7 @@ class TCNTrainer:
             data_root: Root directory for data (optional)
             interactive: If False, auto-confirm dataset download/prepare (--yes)
             no_download: If True, use only existing prepared data; fail if any dataset missing (--no-download)
+            num_workers_override: If set, override config.hardware.num_workers for DataLoader (e.g. 0 for ROCm)
         """
         self.config = config
         
@@ -91,7 +92,13 @@ class TCNTrainer:
         # Create data loaders
         self.logger.info("Setting up data pipeline...")
         self.train_loader, self.val_loader, self.test_loader = create_data_loaders(
-            config, data_root=data_root, pin_memory=self.pin_memory, interactive=interactive, no_download=no_download)
+            config,
+            data_root=data_root,
+            pin_memory=self.pin_memory,
+            interactive=interactive,
+            no_download=no_download,
+            num_workers_override=num_workers_override,
+        )
         
         # Create model
         self.logger.info("Creating TCN model...")
@@ -632,6 +639,14 @@ Examples:
         help='Use only existing prepared data; exit with error if any requested dataset is missing or not prepared (no download or MFA)'
     )
     
+    parser.add_argument(
+        '--num-workers',
+        type=int,
+        default=None,
+        metavar='N',
+        help='Override num_workers for DataLoader (e.g. 0 to avoid worker crashes on ROCm)'
+    )
+    
     return parser.parse_args()
 
 
@@ -655,7 +670,14 @@ def main():
     
     try:
         # Create trainer
-        trainer = TCNTrainer(config, resume_from=args.resume, data_root=args.data_root, interactive=not args.yes, no_download=args.no_download)
+        trainer = TCNTrainer(
+            config,
+            resume_from=args.resume,
+            data_root=args.data_root,
+            interactive=not args.yes,
+            no_download=args.no_download,
+            num_workers_override=args.num_workers,
+        )
         
         if args.test_only:
             # Test only mode
