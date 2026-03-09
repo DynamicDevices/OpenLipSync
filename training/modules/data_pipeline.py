@@ -86,8 +86,16 @@ class AudioProcessor:
         path_str = str(audio_path) if audio_path is not None else ""
         if not path_str:
             raise ValueError("audio_path is None or empty")
-        # Use torchaudio.load(); load_with_torchcodec can trigger C++ aborts in DataLoader workers on some setups (e.g. ROCm)
-        waveform, original_sample_rate = torchaudio.load(path_str)
+        # Use soundfile to avoid torchaudio sox_io C++ backend crash (e.g. basic_string::_M_construct null on ROCm)
+        try:
+            import soundfile as sf
+            data, original_sample_rate = sf.read(path_str, dtype="float32", always_2d=False)
+        except Exception as e:
+            raise RuntimeError(f"soundfile failed for {path_str}: {e}") from e
+        if data.ndim == 1:
+            waveform = torch.from_numpy(data).unsqueeze(0)
+        else:
+            waveform = torch.from_numpy(data.T)
         
         # Ensure mono audio
         if waveform.shape[0] > 1:
