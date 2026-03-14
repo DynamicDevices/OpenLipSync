@@ -219,6 +219,10 @@ crossfade_viz.png
 
 export/
 
+# C audio build artifacts
+audio/example_mel
+audio/mel_from_raw
+
 .idea/
 obj/
 bin/
