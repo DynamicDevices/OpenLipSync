@@ -105,6 +105,12 @@ def load_model_and_config(checkpoint_path: Path,
                 config_dict = json.load(f)
     
     if config_dict:
+        # Force CPU for export when CUDA is not available (e.g. local machine without GPU)
+        if config_dict.get("hardware", {}).get("device", "").startswith("cuda") and not torch.cuda.is_available():
+            config_dict = dict(config_dict)
+            config_dict["hardware"] = dict(config_dict.get("hardware", {}))
+            config_dict["hardware"]["device"] = "cpu"
+        
         # Reconstruct TrainingConfiguration from saved dict
         from modules.config import (
             TrainingConfiguration, ModelConfig, AudioConfig, TrainingConfig,
@@ -203,42 +209,22 @@ def export_onnx(model: torch.nn.Module,
     # Export to ONNX
     onnx_path = output_dir / f"{model_name}.onnx"
     
-    used_exporter = "dynamo"
-    try:
-        # Prefer the new torch.export-based ONNX exporter
-        from torch.export import Dim
-        dynamic_shapes = {
-            "audio_features": {0: Dim("batch", min=1, max=16), 1: Dim("sequence_length", min=1, max=2048)}
+    used_exporter = "legacy"
+    # Use legacy exporter (dynamic_axes); dynamo exporter requires onnxscript
+    torch.onnx.export(
+        model,                          # model being run
+        dummy_input,                    # model input
+        str(onnx_path),                 # where to save the model
+        export_params=True,             # store the trained parameter weights
+        opset_version=11,               # ONNX version to export to
+        do_constant_folding=True,       # whether to execute constant folding
+        input_names=['audio_features'], # input names
+        output_names=['viseme_logits'], # output names
+        dynamic_axes={
+            'audio_features': {1: 'sequence_length'},  # variable length sequences
+            'viseme_logits': {1: 'sequence_length'}   # variable length outputs
         }
-        torch.onnx.export(
-            model,                          # model being run
-            dummy_input,                    # model input
-            str(onnx_path),                 # where to save the model
-            export_params=True,             # store the trained parameter weights
-            opset_version=11,               # ONNX version to export to
-            do_constant_folding=True,       # whether to execute constant folding
-            input_names=['audio_features'], # input names
-            output_names=['viseme_logits'], # output names
-            dynamic_shapes=dynamic_shapes,  # dynamic shapes with new exporter
-            dynamo=True                     # use new torch.export-based exporter
-        )
-    except Exception:
-        # Fallback to legacy exporter for compatibility
-        used_exporter = "torchscript"
-        torch.onnx.export(
-            model,                          # model being run
-            dummy_input,                    # model input
-            str(onnx_path),                 # where to save the model
-            export_params=True,             # store the trained parameter weights
-            opset_version=11,               # ONNX version to export to
-            do_constant_folding=True,       # whether to execute constant folding
-            input_names=['audio_features'], # input names
-            output_names=['viseme_logits'], # output names
-            dynamic_axes={
-                'audio_features': {1: 'sequence_length'},  # variable length sequences
-                'viseme_logits': {1: 'sequence_length'}    # variable length outputs
-            }
-        )
+    )
     
     # Save configuration
     config_path = output_dir / "config.json"
