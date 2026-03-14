@@ -1,5 +1,9 @@
 # TODO
 
+## UK visemes
+
+**Support UK visemes in addition to US.** Currently using US visemes (`viseme_map_en_us_arpa.json`). UK recipe (`tcn_full_uk.toml`) exists and uses `viseme_map_en_uk_mfa.json` with the same LibriSpeech data—run with UK MFA models for alignment. Goal: ensure both US and UK viseme models are maintained and easily trainable.
+
 ## Phoneme test audio
 
 **Improve phoneme test pass rate and realism** by replacing TTS-generated clips with human-recorded phoneme clips.

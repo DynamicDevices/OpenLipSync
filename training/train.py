@@ -342,6 +342,8 @@ class TCNTrainer:
             if (self.global_step > 0 and 
                 self.global_step % self.config.logging.save_interval == 0):
                 self._save_checkpoint(is_best=False)
+                if self.device_type == "cuda":
+                    torch.cuda.empty_cache()
             
             self.global_step += 1
         
@@ -397,6 +399,10 @@ class TCNTrainer:
         # Compute validation metrics
         val_metrics = self.val_metrics.compute()
         val_metrics['loss'] = (total_val_loss / num_batches) if num_batches > 0 else float('nan')
+        
+        # Free GPU memory to reduce fragmentation (helps ROCm/CUDA on long runs)
+        if self.device_type == "cuda":
+            torch.cuda.empty_cache()
         
         return val_metrics
     
@@ -477,6 +483,8 @@ class TCNTrainer:
                 
                 # Save checkpoint
                 self._save_checkpoint(is_best=is_best)
+                if self.device_type == "cuda":
+                    torch.cuda.empty_cache()
                 
                 # Check early stopping
                 should_stop = self.early_stopping.update(current_val_metric, epoch)
@@ -594,6 +602,9 @@ Examples:
     # Resume from checkpoint
     python train.py --config recipes/tcn_config.toml --resume checkpoints/best_model.pt
     
+    # Reduce memory (OOM on ROCm/LXC): smaller batch + mixed precision
+    python train.py --config recipes/tcn_config.toml --batch-size 16 --mixed-precision --num-workers 0
+    
     # Test only (no training)
     python train.py --config recipes/tcn_config.toml --test-only --resume checkpoints/best_model.pt
     
@@ -647,6 +658,28 @@ Examples:
         help='Override num_workers for DataLoader (e.g. 0 to avoid worker crashes on ROCm)'
     )
     
+    parser.add_argument(
+        '--batch-size',
+        type=int,
+        default=None,
+        metavar='N',
+        help='Override batch size (reduces GPU memory; use 16 or 8 if OOM)'
+    )
+    
+    parser.add_argument(
+        '--mixed-precision',
+        action='store_true',
+        help='Enable AMP (16-bit) to reduce GPU memory; works with CUDA and ROCm'
+    )
+    
+    parser.add_argument(
+        '--max-chunk-length',
+        type=float,
+        default=None,
+        metavar='SEC',
+        help='Override max_chunk_length_s (shorter = less memory; e.g. 6.0 or 4.0)'
+    )
+    
     return parser.parse_args()
 
 
@@ -662,6 +695,17 @@ def main():
     except Exception as error:
         print(f"Configuration error: {error}")
         sys.exit(1)
+    
+    # Apply CLI overrides (for OOM mitigation on limited GPU memory)
+    if args.batch_size is not None:
+        config.training.batch_size = args.batch_size
+        print(f"Overriding batch_size to {args.batch_size}")
+    if args.mixed_precision:
+        config.training.mixed_precision = True
+        print("Overriding mixed_precision to True (AMP)")
+    if args.max_chunk_length is not None:
+        config.training.max_chunk_length_s = args.max_chunk_length
+        print(f"Overriding max_chunk_length_s to {args.max_chunk_length}")
     
     # Set data root if specified
     if args.data_root:

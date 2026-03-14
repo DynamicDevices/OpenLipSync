@@ -160,6 +160,28 @@ In the recipe set `device = "cuda"` (same as for NVIDIA). Then run training as u
 
 **Note:** If you use `uv` and install ROCm via `uv pip install ... --index-url ...rocm6.3`, then `uv run` will re-sync from the lock file and can revert to the default CUDA wheel. To keep using the GPU, run training with the venv Python directly, e.g. `.venv/bin/python training/train.py --config ...`, or a wrapper script that calls `.venv/bin/python`.
 
+### 5c. OOM (out of memory) on GPU / ROCm
+
+If training dies without an error (often mid-epoch), the GPU may be running out of memory. On **AMD/ROCm** this is common due to driver quirks and memory fragmentation.
+
+**1. Use the GPU run script** (sets ROCm mitigations automatically):
+
+```bash
+./run_training_gpu.sh --config training/recipes/tcn_config.toml --no-download --num-workers 0
+```
+
+The script sets `PYTORCH_TUNABLEOP_ENABLED=0` and `PYTORCH_HIP_ALLOC_CONF=expandable_segments:True` to reduce ROCm memory issues.
+
+**2. If it still OOMs, add memory-reduction flags:**
+
+```bash
+# Smaller batch + mixed precision + shorter chunks
+./run_training_gpu.sh --config training/recipes/tcn_config.toml --no-download --num-workers 0 \
+  --batch-size 16 --mixed-precision --max-chunk-length 6.0
+```
+
+Try `--batch-size 8` or `--max-chunk-length 4.0` if it still crashes. Resume from the last checkpoint with the same flags.
+
 ## 6. Where outputs go
 
 - **Checkpoints:** `training/runs/<run_name>/checkpoints/` (e.g. `best_model.pt`)
